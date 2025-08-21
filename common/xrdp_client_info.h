@@ -90,6 +90,23 @@ enum xrdp_capture_code
     CC_GFX_A2       = 5
 };
 
+// Message sent from the client in the DMA-BUF initialization sequence
+enum dma_buf_client_notify
+{
+    DMA_BUF_REQUEST_ACTIVATE = 0,
+    DMA_BUF_NOTIFY_INACTIVE = 1,
+    DMA_BUF_NOTIFY_ACTIVE = 2,
+};
+
+// Message sent from the server to update DMA-BUF state
+enum dma_buf_server_notify
+{
+    DMA_BUF_NOT_SUPPORTED = 0,
+    DMA_BUF_DEACTIVATE = 1,
+    DMA_BUF_ACTIVATE_WITH_FD = 2,
+    DMA_BUF_PAINT = 3,
+};
+
 /**
  * Information about the xrdp client
  *

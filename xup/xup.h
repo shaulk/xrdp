@@ -62,7 +62,8 @@ struct mod
     int (*mod_server_monitor_full_invalidate)(struct mod *v,
             int width, int height);
     int (*mod_server_version_message)(struct mod *v);
-    tintptr mod_dumby[100 - 14]; /* align, 100 minus the number of mod
+    int (*mod_send_dma_buf_notify)(struct mod *v, enum dma_buf_client_notify type);
+    tintptr mod_dumby[100 - 15]; /* align, 100 minus the number of mod
                                  functions above */
     /* server functions */
     int (*server_begin_update)(struct mod *v);
@@ -176,7 +177,16 @@ struct mod
     int (*server_egfx_cmd)(struct mod *v,
                            char *cmd, int cmd_bytes,
                            char *data, int data_bytes);
-    tintptr server_dumby[100 - 50]; /* align, 100 minus the number of server
+    int (*server_dma_buf_notify)(struct mod *v,
+                                 enum dma_buf_server_notify state);
+    int (*server_dma_buf_receive_pixmap_fd)(struct mod *v,
+                                            int fd, uint32_t width,
+                                            uint32_t height, uint16_t stride,
+                                            uint32_t size, uint32_t format);
+    int (*server_dma_buf_deactivate)(struct mod *v);
+    int (*server_dma_buf_paint_pixmap)(struct mod *v);
+
+    tintptr server_dumby[100 - 54]; /* align, 100 minus the number of server
                                      functions above */
     /* common */
     tintptr handle; /* pointer to self as long */
