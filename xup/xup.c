@@ -1452,6 +1452,74 @@ process_server_paint_rect_shmfd(struct mod *amod, struct stream *s)
     return rv;
 }
 
+
+/******************************************************************************/
+/* return error */
+static int
+process_server_dma_buf_notify(struct mod *amod, struct stream *s)
+{
+    int rv;
+    int fd;
+    int recv_bytes;
+    unsigned int num_fds;
+    char msg[4];
+    enum dma_buf_server_notify state;
+    uint32_t width;
+    uint32_t height;
+    uint16_t stride;
+    uint32_t size;
+    uint32_t format;
+
+    in_uint16_le(s, state);
+
+    amod->server_dma_buf_notify(amod, state);
+
+    switch (state) {
+        case DMA_BUF_NOT_SUPPORTED:
+            LOG_DEVEL(LOG_LEVEL_WARNING, "process_server_dma_buf_notify: "
+                  "Server notifies us that DMA-BUF is not supported.");
+            return 0;
+        case DMA_BUF_DEACTIVATE:
+            LOG_DEVEL(LOG_LEVEL_DEBUG, "process_server_dma_buf_notify: "
+                      "Server is deactivating DMA-BUF.");
+            return amod->server_dma_buf_deactivate(amod);
+        case DMA_BUF_ACTIVATE_WITH_FD:
+            LOG_DEVEL(LOG_LEVEL_DEBUG, "process_server_dma_buf_notify: "
+                      "Server is activating DMA-BUF and sending us the pixmap fd.");
+
+            in_uint32_le(s, width);
+            in_uint32_le(s, height);
+            in_uint16_le(s, stride);
+            in_uint32_le(s, size);
+            in_uint32_le(s, format);
+            rv = 0;
+            fd = -1;
+            num_fds = -1;
+            if (g_tcp_can_recv(amod->trans->sck, 5000) == 0)
+            {
+                LOG_DEVEL(LOG_LEVEL_WARNING, "process_server_dma_buf_notify: "
+                          "Server did not send the pixmap fd within 5 seconds.");
+                return 1;
+            }
+            recv_bytes = g_sck_recv_fd_set(amod->trans->sck, msg, 4, &fd, 1, &num_fds);
+            LOG_DEVEL(LOG_LEVEL_DEBUG, "process_server_dma_buf_notify: "
+                      "g_sck_recv_fd_set recv_bytes %d num_fds %d fd %d",
+                      recv_bytes, num_fds, fd);
+            if (recv_bytes == 4 && num_fds == 1)
+            {
+                rv = amod->server_dma_buf_receive_pixmap_fd(amod, fd, width, height, stride, size, format);
+                g_file_close(fd);
+            }
+            return rv;
+        case DMA_BUF_PAINT:
+            return amod->server_dma_buf_paint_pixmap(amod);
+        default:
+            LOG_DEVEL(LOG_LEVEL_WARNING, "process_server_dma_buf_notify: "
+                      "Unknown DMA-BUF server notify state: %d", state);
+            return 0;
+    }
+}
+
 /******************************************************************************/
 /* return error */
 static int
@@ -1471,6 +1539,26 @@ send_server_version_message(struct mod *mod, struct stream *s)
     s_pop_layer(s, iso_hdr);
     out_uint32_le(s, len);
     int rv = lib_send_copy(mod, s);
+    return rv;
+}
+
+/******************************************************************************/
+/* return error */
+static int
+send_dma_buf_notify(struct mod *mod, enum dma_buf_client_notify type)
+{
+    struct stream *s;
+    make_stream(s);
+    init_stream(s, 8192);
+    s_push_layer(s, iso_hdr, 4);
+    out_uint16_le(s, 9999);
+    out_uint16_le(s, type);
+    s_mark_end(s);
+    int len = (int)(s->end - s->data);
+    s_pop_layer(s, iso_hdr);
+    out_uint32_le(s, len);
+    int rv = lib_send_copy(mod, s);
+    free_stream(s);
     return rv;
 }
 
@@ -1574,6 +1662,15 @@ lib_send_server_monitor_full_invalidate(struct mod *mod, int width, int height)
     make_stream(s);
     int rv = send_server_monitor_full_invalidate(mod, s, width, height);
     free_stream(s);
+    return rv;
+}
+
+/******************************************************************************/
+/* return error */
+static int
+lib_send_dma_buf_notify(struct mod *mod, enum dma_buf_client_notify type)
+{
+    int rv = send_dma_buf_notify(mod, type);
     return rv;
 }
 
@@ -1686,6 +1783,9 @@ lib_mod_process_orders(struct mod *mod, int type, struct stream *s)
             break;
         case 64: /* server_paint_rect_shmfd */
             rv = process_server_paint_rect_shmfd(mod, s);
+            break;
+        case 9999: /* server_dma_buf_notify */
+            rv = process_server_dma_buf_notify(mod, s);
             break;
         default:
             LOG_DEVEL(LOG_LEVEL_WARNING,
@@ -1979,6 +2079,7 @@ mod_init(void)
     mod->mod_server_monitor_full_invalidate
         = lib_send_server_monitor_full_invalidate;
     mod->mod_server_version_message = lib_send_server_version_message;
+    mod->mod_send_dma_buf_notify = lib_send_dma_buf_notify;
     return (tintptr) mod;
 }
 
